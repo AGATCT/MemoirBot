@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}记忆 - PersonalAgent{% endblock %}
+
+{% block content %}
+<div class="memory-container">
+    <div class="memory-header">
+        <h2>记忆浏览</h2>
+        <div style="display:flex; gap:12px; align-items:center;">
+            <input type="text" id="memory-search" placeholder="搜索记忆..." style="padding:6px 12px; border:1px solid var(--color-border); border-radius:var(--radius); width:200px;">
+            <span id="memory-stats" class="text-muted text-sm"></span>
+        </div>
+    </div>
+
+    <!-- 类型标签页 -->
+    <div class="memory-tabs">
+        <div class="memory-tab active" data-type="">全部</div>
+        <div class="memory-tab" data-type="user">用户</div>
+        <div class="memory-tab" data-type="feedback">反馈</div>
+        <div class="memory-tab" data-type="event">事件</div>
+        <div class="memory-tab" data-type="state">状态</div>
+        <div class="memory-tab" data-type="reference">参考</div>
+    </div>
+
+    <!-- 记忆列表 -->
+    <div class="memory-list" id="memory-list">
+        <p class="text-muted">加载中...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/memory.js"></script>
+{% endblock %}

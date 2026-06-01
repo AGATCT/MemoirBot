@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}设置 - PersonalAgent{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+    <h2>系统设置</h2>
+    <div class="settings-grid">
+
+    <!-- 系统状态 -->
+    <div class="settings-section full-width">
+        <h3>系统状态</h3>
+        <div id="system-status-info">
+            <p class="text-muted">加载中...</p>
+        </div>
+    </div>
+
+    <!-- LLM 配置 -->
+    <div class="settings-section">
+        <h3>LLM 配置</h3>
+        <div class="form-group">
+            <label>提供商</label>
+            <select id="setting-provider">
+                <option value="deepseek">DeepSeek</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>模型</label>
+            <input type="text" id="setting-model" value="deepseek-chat">
+            <div class="form-hint">如 deepseek-chat, deepseek-reasoner</div>
+        </div>
+        <div class="form-group">
+            <label>Temperature</label>
+            <input type="number" id="setting-temperature" value="0.7" step="0.1" min="0" max="2">
+        </div>
+    </div>
+
+    <!-- 记忆系统设置 -->
+    <div class="settings-section">
+        <h3>记忆系统</h3>
+        <div class="form-group">
+            <label>提取间隔（轮对话）</label>
+            <input type="number" id="setting-extraction" value="5" min="1" max="50">
+            <div class="form-hint">每 N 轮对话后自动提取记忆</div>
+        </div>
+        <div class="form-group">
+            <label>Dream 间隔（小时）</label>
+            <input type="number" id="setting-dream-hours" value="24" min="1" max="168">
+            <div class="form-hint">每 N 小时自动整理记忆</div>
+        </div>
+        <div class="form-group">
+            <label>最少会话数</label>
+            <input type="number" id="setting-dream-sessions" value="5" min="1" max="100">
+            <div class="form-hint">Dream 触发所需最小会话数</div>
+        </div>
+    </div>
+
+    <!-- 操作 -->
+    <div class="settings-section full-width">
+        <h3>操作</h3>
+        <div style="display:flex; gap:12px;">
+            <button id="btn-save-settings" class="btn btn-primary">保存设置</button>
+            <button id="btn-trigger-dream" class="btn btn-outline">手动触发 Dream</button>
+        </div>
+        <div id="action-status" class="text-muted text-sm" style="margin-top:8px;"></div>
+    </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    loadSettings();
+    loadSystemStatus();
+
+    document.getElementById('btn-save-settings').addEventListener('click', saveSettings);
+    document.getElementById('btn-trigger-dream').addEventListener('click', triggerDream);
+
+    async function loadSettings() {
+        try {
+            const resp = await fetch('/api/settings');
+            const data = await resp.json();
+            document.getElementById('setting-model').value = data.llm.model;
+            document.getElementById('setting-temperature').value = data.llm.temperature;
+            document.getElementById('setting-extraction').value = data.memory.extraction_interval;
+            document.getElementById('setting-dream-hours').value = data.memory.dream_interval_hours;
+            document.getElementById('setting-dream-sessions').value = data.memory.dream_min_sessions;
+        } catch(e) {}
+    }
+
+    async function loadSystemStatus() {
+        try {
+            const resp = await fetch('/api/system/status');
+            const data = await resp.json();
+            const dreamStatus = data.dream.is_running ? '运行中' : '空闲';
+            document.getElementById('system-status-info').innerHTML = `
+                <p>记忆总数: <strong>${data.memory_count}</strong></p>
+                <p>Dream 状态: <strong>${dreamStatus}</strong></p>
+                <p>上次 Dream: <span class="text-muted">${data.dream.last_dream_run || '从未运行'}</span></p>
+            `;
+        } catch(e) {}
+    }
+
+    async function saveSettings() {
+        const settings = {
+            llm: {
+                model: document.getElementById('setting-model').value,
+                temperature: parseFloat(document.getElementById('setting-temperature').value),
+            },
+            memory: {
+                extraction_interval: parseInt(document.getElementById('setting-extraction').value),
+                dream_interval_hours: parseInt(document.getElementById('setting-dream-hours').value),
+                dream_min_sessions: parseInt(document.getElementById('setting-dream-sessions').value),
+            }
+        };
+        try {
+            const resp = await fetch('/api/settings', {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(settings)
+            });
+            if (resp.ok) {
+                document.getElementById('action-status').textContent = '已保存';
+            }
+        } catch(e) {
+            document.getElementById('action-status').textContent = '保存失败';
+        }
+    }
+
+    async function triggerDream() {
+        document.getElementById('action-status').textContent = '正在触发 Dream...';
+        try {
+            const resp = await fetch('/api/system/dream/trigger', {method: 'POST'});
+            const data = await resp.json();
+            document.getElementById('action-status').textContent = JSON.stringify(data);
+            setTimeout(loadSystemStatus, 2000);
+        } catch(e) {
+            document.getElementById('action-status').textContent = '触发失败';
+        }
+    }
+});
+</script>
+{% endblock %}

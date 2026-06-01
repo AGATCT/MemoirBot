@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}PersonalAgent{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="app-layout">
+        <nav class="sidebar">
+            <div class="sidebar-brand"><h1>PersonalAgent</h1></div>
+            <ul class="sidebar-nav">
+                <li><a href="/chat" class="nav-item {% if request.url.path == '/chat' or request.url.path == '/' %}active{% endif %}">聊天</a></li>
+                <li><a href="/diary" class="nav-item {% if request.url.path == '/diary' %}active{% endif %}">日记</a></li>
+                <li><a href="/memory" class="nav-item {% if request.url.path == '/memory' %}active{% endif %}">记忆</a></li>
+                <li><a href="/settings" class="nav-item {% if request.url.path == '/settings' %}active{% endif %}">设置</a></li>
+            </ul>
+            <div class="sidebar-footer">
+                <div id="system-status" class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">系统就绪</span>
+                </div>
+            </div>
+        </nav>
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+
+        <aside class="agent-panel" id="agent-panel">
+            <div class="agent-panel-header">
+                <h3>Agent 活动</h3>
+                <span id="agent-panel-badge" class="agent-panel-badge" style="display:none">0</span>
+                <button class="agent-panel-close" id="agent-panel-close" title="关闭面板">×</button>
+            </div>
+            <div class="agent-panel-body" id="agent-panel-body">
+                <p class="agent-empty">暂无活动</p>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+    (function() {
+        var panel = document.getElementById('agent-panel');
+        var bodyEl = document.getElementById('agent-panel-body');
+        var badge = document.getElementById('agent-panel-badge');
+        var closeBtn = document.getElementById('agent-panel-close');
+        var STORE_KEY = 'pa_agent_panel_open';
+        var open = localStorage.getItem(STORE_KEY) !== 'false';
+
+        // 右侧悬浮书签
+        var bookmark = document.createElement('div');
+        bookmark.className = 'agent-bookmark';
+        bookmark.textContent = 'Agent';
+        bookmark.addEventListener('click', function() {
+            open = true;
+            panel.style.display = '';
+            bookmark.style.display = 'none';
+            localStorage.setItem(STORE_KEY, 'true');
+            fetchActivities();
+        });
+        document.body.appendChild(bookmark);
+
+        function applyState() {
+            if (open) {
+                panel.style.display = '';
+                bookmark.style.display = 'none';
+            } else {
+                panel.style.display = 'none';
+                bookmark.style.display = '';
+            }
+        }
+
+        closeBtn.addEventListener('click', function() {
+            open = false;
+            localStorage.setItem(STORE_KEY, 'false');
+            applyState();
+        });
+
+        applyState();
+
+        function fetchActivities() {
+            fetch('/api/system/agent-activity?limit=30')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var acts = data.activities || [];
+                    badge.textContent = data.running_count || 0;
+                    badge.style.display = data.running_count > 0 ? '' : 'none';
+
+                    if (acts.length === 0) {
+                        bodyEl.innerHTML = '<p class="agent-empty">暂无活动</p>';
+                        return;
+                    }
+                    bodyEl.innerHTML = acts.reverse().map(renderEntry).join('');
+                })
+                .catch(function() {});
+        }
+
+        function renderEntry(a) {
+            var icon = a.status === 'running' ? '<span class="agent-spinner"></span>'
+                     : a.status === 'failed' ? '×' : '✓';
+            var cls = a.status;
+            var time = fmtTime(a.started_at);
+            var dur = a.duration_ms ? fmtDur(a.duration_ms) : '';
+            var items = a.items && a.items.length > 0
+                ? '<ul class="agent-log-items">' + a.items.map(function(i) { return '<li>' + esc(i) + '</li>'; }).join('') + '</ul>'
+                : '';
+
+            return '<div class="agent-log-entry ' + cls + '">'
+                + '<div class="agent-log-head">'
+                + '<span class="agent-log-status">' + icon + '</span>'
+                + '<span class="agent-log-label">' + esc(a.label) + '</span>'
+                + '<span class="agent-log-time">' + time + '</span>'
+                + '</div>'
+                + (a.summary ? '<div class="agent-log-summary">' + esc(a.summary) + '</div>' : '')
+                + items
+                + (a.detail ? '<div class="agent-log-detail">' + esc(a.detail) + '</div>' : '')
+                + '<div class="agent-log-meta">'
+                + '<span>' + a.agent_type + '</span>'
+                + (dur ? '<span>' + dur + '</span>' : '')
+                + (a.session_id ? '<span>会话 ' + a.session_id.slice(-8) + '</span>' : '')
+                + '</div></div>';
+        }
+
+        function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+        function fmtTime(iso) {
+            if (!iso) return '';
+            try {
+                var d = new Date(iso), n = new Date(), diff = n - d;
+                if (diff < 60000) return '刚刚';
+                if (diff < 3600000) return Math.floor(diff/60000) + '分前';
+                return d.toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+            } catch(e) { return ''; }
+        }
+
+        function fmtDur(ms) {
+            if (ms < 1000) return ms + 'ms';
+            if (ms < 60000) return (ms/1000).toFixed(1) + 's';
+            return Math.floor(ms/60000) + 'm' + Math.round((ms%60000)/1000) + 's';
+        }
+
+        fetchActivities();
+        setInterval(function() { if (open) fetchActivities(); }, 3000);
+    })();
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

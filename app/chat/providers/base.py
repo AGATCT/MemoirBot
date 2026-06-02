@@ -15,7 +15,7 @@ class LLMConfig:
     """LLM 提供商配置。"""
     api_key: str
     base_url: str = "https://api.deepseek.com/v1"
-    model: str = "deepseek-chat"
+    model: str = "deepseek-v4-flash"
     max_tokens: int = 4096
     temperature: float = 0.7
 
@@ -51,10 +51,19 @@ class LLMProvider(ABC):
 
     @abstractmethod
     async def chat_stream(
-        self, messages: list[dict], **kwargs
-    ) -> AsyncGenerator[str, None]:
-        """流式聊天，逐块返回响应文本。"""
+        self, messages: list[dict], tools: list[dict] | None = None, **kwargs
+    ) -> AsyncGenerator[dict, None]:
+        """流式聊天，逐块返回响应。
+
+        Yields:
+            dict with keys:
+                - "type": "reasoning" → {"type": "reasoning", "content": str}
+                - "type": "token"     → {"type": "token", "content": str}
+                - "type": "tool_call" → {"type": "tool_call", "id": str,
+                                           "name": str, "arguments": dict}
+        """
         ...
+        yield  # type: ignore[unreachable]
 
     @abstractmethod
     async def chat_with_tools(

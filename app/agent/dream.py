@@ -27,42 +27,34 @@ class DreamAgent(SubAgent):
     关键原则：Dream 应该让记忆库更精炼，而不是更臃肿。
     """
 
-    SYSTEM_PROMPT = """你是 PersonalAgent 记忆整理系统（Dream Process）。
+    SYSTEM_PROMPT = """你是记忆整理 Agent。定期对记忆库做一次回顾，让未来的会话能快速了解用户。
 
-你定期运行，负责检查和维护用户的记忆库。
+## 工作流程
 
-## 你的职责
+### 1. 了解现状
+用 read_all_memories 查看索引。对看起来可能重复、过时或有矛盾的文件用 read_memory_detail 读完整内容。目的是在修改前充分理解已有信息，避免重复或误删。
 
-### 1. 合并明显的重复
-两条记忆讲的是同一件事 → 保留更完整的那条，删除另一条。
-如果只是主题相近但内容不同（如"用户喜欢Python"和"用户常用FastAPI"），不要合并。
+### 2. 合并和修正
+- 两条记忆实质上讲同一件事 → 更新更完整的那条，删除另一条。主题相近但内容不同的不要合并。
+- 明显的事实错误（如日期不合理的）且能确定正确值 → 更新。不确定的不要动。
+- 明显过期的 state（如已完成的短期状态）→ 删除。
+- 内容高度重复且一条已覆盖另一条的全部信息 → 删除重复的那条。
 
-### 2. 修正事实错误
-- 日期明显错误且能确定正确日期 → 更新
-- 内容与另一条更高可信度的记忆矛盾 → 删掉错误的那条
-- 不确定对错的，**不要动**，标注在输出中
+### 3. 整理索引
+检查 MEMORY.md，确保：
+- 指向的文件确实存在
+- 已删除的文件从索引中移除
+- 每个条目一行，描述简洁
 
-### 3. 清理明确过期的状态
-- state 类型中已经不再有效的（如"正在做X"但显然已完成）
-- 其他类型不要以"可能过期"为由删除
+## 原则
 
-## 操作约束
-
-- **默认保留**：拿不准的一律不动。只处理你确定应该处理的。
-- **宁缺毋滥**：一次 dream 删 0-2 条是正常的。删 5 条以上说明你做过头了。
-- **不要写综合报告**：不要创建新文件来"总结"已有记忆。
-- **不要改表述**：除非有明显错误，否则保留用户原始表述。
+- 拿不准的不动。一次 dream 处理 0-3 条是正常的。
+- 不要新建记忆来"总结"已有内容。在已有文件上改进。
+- 保留用户的原始表述，不要自行改写。
 
 ## 输出
 
-返回 JSON：
-{
-  "status": "completed",
-  "deleted": 0,
-  "merged": 0,
-  "updated": 0,
-  "summary": "做了什么，没做什么"
-}
+返回 JSON：{"status": "completed", "deleted": N, "merged": N, "updated": N, "summary": "简述"}
 """
 
     def __init__(
@@ -81,30 +73,23 @@ class DreamAgent(SubAgent):
         tools = [
             Tool(
                 name="read_all_memories",
-                description="列出所有记忆的索引。先看有哪些记忆，再决定读哪些的详情。",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "mem_type": {"type": "string", "description": "可选，按类型筛选"},
-                    },
-                },
+                description="列出所有记忆的索引",
+                parameters={"type": "object", "properties": {}},
                 handler=lambda **kw: tool_handlers["read_all_memories"](**kw),
             ),
             Tool(
                 name="read_memory_detail",
-                description="读取单条记忆的完整内容（含 frontmatter 元数据）",
+                description="读取单条记忆的完整内容",
                 parameters={
                     "type": "object",
-                    "properties": {
-                        "name": {"type": "string", "description": "记忆文件名（不含 .md）"},
-                    },
+                    "properties": {"name": {"type": "string"}},
                     "required": ["name"],
                 },
                 handler=lambda **kw: tool_handlers["read_memory_detail"](**kw),
             ),
             Tool(
                 name="write_memory",
-                description="创建新记忆或更新已有记忆。name 相同即为更新。",
+                description="创建或更新记忆，name 相同即为更新。",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -160,33 +145,20 @@ class DreamAgent(SubAgent):
                 f"- [{m.type}] **{m.name}** — {m.description}{age}"
             )
 
-        input_text = f"""## Dream 任务
+        input_text = f"""当前日期: {today_str}
+共 {total} 条记忆，上次整理以来有 {session_count} 个会话活跃。
 
-当前日期: {today_str}（所有日期判断以此为基准）
-共 {total} 条记忆。自上次 dream 以来有 {session_count} 个会话活动。
-
-## 当前记忆清单
+## 当前记忆
 
 {chr(10).join(memory_summary)}
 
-## 执行步骤
+## 步骤
 
-### 第一步：读取（1轮）
-用 read_all_memories 获取概览。只对明显重复或可能有矛盾的记忆用 read_memory_detail 读详情。
+1. 用 read_all_memories 获取索引，对需要细看的条目用 read_memory_detail
+2. 合并重复、修正错误、清理过期状态
+3. 完成后直接输出结果
 
-### 第二步：处理（1轮）
-只处理你确定需要处理的：
-- **合并**：两条记忆讲同一件事 → 保留更完整的那条，删除另一条
-- **修正**：日期明显错误且能确定正确值 → 更新
-- **清理**：state 类型中明确过期的 → 删除
-
-## 重要约束
-
-1. **默认不动**：拿不准的一律跳过。一次 dream 删 0-2 条是正常的。
-2. **不要创建新记忆**来"总结"已有记忆。
-3. **不要改表述**，除非有明显事实错误。
-
-完成后输出 JSON：{{"status": "completed", "deleted": N, "merged": N, "updated": N, "summary": "做了什么"}}"""
+一次 dream 通常处理 0-3 条。拿不准的不动。"""
 
         result = await self.run(input_text)
 

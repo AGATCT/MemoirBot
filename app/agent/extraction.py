@@ -137,9 +137,15 @@ class ExtractionAgent(SubAgent):
             type_defs.append(f"- **{key}** ({info['name']}): {info['description']}")
 
         # 提取指令追加在聊天前缀后面（coding-agent-main 模式：一条 user message）
-        input_text = f"""你是记忆提取子 Agent。分析以上对话，提取值得持久保存的记忆。
+        input_text = f"""你是记忆提取子 Agent。分析以上对话中**用户的消息**，提取值得持久保存的新信息。
 
-当前日期: {today}。所有事件记忆必须以当前日期为基准计算。不确定的时间不要推测。
+**注意**：
+
+- 只提取用户本轮直接陈述的新事实。assistant 回复中引用的已有记忆不是新信息。
+- 忠实于用户原意，不要替用户推理或添加评价。
+- 一条记忆一件事。
+
+当前日期: {today}。所有事件记忆必须以当前日期为基准计算。不确定的时间不要推测，直接标注"时间未明确"。
 
 {chr(10).join(type_defs)}
 
@@ -152,6 +158,7 @@ class ExtractionAgent(SubAgent):
 
 ## 操作
 - 先 read_all_memories 检查已有记忆，避免创建重复
+- 只提取用户直接陈述的新信息，忽略 assistant 回复中的推测和已有记忆引用
 - 对有价值的信息用 write_memory 保存（同名文件会更新）
 - 如果没有值得保存的内容，直接返回: {{"status": "nothing_to_save"}}"""
 

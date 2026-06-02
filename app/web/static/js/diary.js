@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let html = '<div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-align:center;">';
         // 星期头
         ['日','一','二','三','四','五','六'].forEach(d => {
-            html += `<div style="font-size:11px; color:var(--color-text-muted); padding:4px 0;">${d}</div>`;
+            html += `<div style="font-size:11px; color:var(--text-tertiary); padding:4px 0;">${d}</div>`;
         });
 
         // 空白填充
@@ -104,11 +104,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let style = 'padding:6px 2px; cursor:pointer; border-radius:4px; font-size:13px;';
             if (isToday) style += 'font-weight:bold;';
-            if (isSelected) style += 'background:var(--color-primary); color:#fff;';
+            if (isSelected) style += 'background:var(--accent); color:#fff;';
 
             html += `<div style="${style}" data-date="${dateStr}" class="cal-day">
                 ${day}
-                ${hasEntry ? '<div style="width:5px;height:5px;border-radius:50%;background:' + (isSelected ? '#fff' : 'var(--color-primary)') + ';margin:2px auto 0;"></div>' : ''}
+                <div style="width:5px;height:5px;border-radius:50%;margin:2px auto 0;${hasEntry ? 'background:' + (isSelected ? '#fff' : 'var(--accent)') : ''}"></div>
             </div>`;
         }
 
@@ -238,11 +238,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             entryListMini.innerHTML = entries.slice(0, 15).map(e => `
-                <div style="padding:6px 0; cursor:pointer; border-bottom:1px solid var(--color-border); font-size:12px;"
+                <div style="padding:6px 0; cursor:pointer; border-bottom:1px solid var(--border); font-size:12px;"
                      data-date="${e.date}">
                     <span style="font-weight:500;">${formatDateCN(e.date)}</span>
                     ${e.mood ? `<span style="opacity:0.5;font-size:10px;">${e.mood}</span>` : ''}
-                    <span style="color:var(--color-text-muted); display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.preview || '(空)'}</span>
+                    <span style="color:var(--text-tertiary); display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.preview || '(空)'}</span>
                 </div>
             `).join('');
 

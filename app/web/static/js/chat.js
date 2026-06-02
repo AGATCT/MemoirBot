@@ -24,6 +24,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     chatInput.addEventListener('input', () => {
         btnSend.disabled = !chatInput.value.trim() || isStreaming;
+        // 自动撑高，上限 10 行
+        chatInput.style.height = 'auto';
+        chatInput.style.height = Math.min(chatInput.scrollHeight, 240) + 'px';
     });
 
     chatInput.addEventListener('keydown', (e) => {
@@ -34,6 +37,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     btnSend.addEventListener('click', sendMessage);
+
+    // 思考强度切换
+    document.querySelector('.effort-switch')?.addEventListener('click', (e) => {
+        const opt = e.target.closest('.effort-opt');
+        if (!opt || opt.classList.contains('active')) return;
+        opt.parentElement.querySelectorAll('.effort-opt').forEach(el => el.classList.remove('active'));
+        opt.classList.add('active');
+    });
 
     // 顶部标题栏双击重命名
     document.getElementById('chat-title-bar')?.addEventListener('dblclick', () => {
@@ -120,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
             noSessionHint.style.display = 'none';
             chatArea.style.display = '';
             messageList.innerHTML = '';
-            data.messages.forEach(msg => appendMessage(msg.role, msg.content, msg.timestamp));
+            data.messages.forEach(msg => appendMessage(msg.role, msg.content, msg.timestamp, msg.reasoning_content));
 
             // 更新顶部标题
             const titleBar = document.getElementById('chat-title-bar');
@@ -154,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
         input.type = 'text';
         input.value = oldTitle;
         input.className = 'rename-input';
-        input.style.cssText = 'width:100%; padding:2px 4px; border:1px solid var(--color-primary); border-radius:4px; font-size:14px;';
+        input.style.cssText = 'width:100%; padding:2px 4px; border:1px solid var(--accent); border-radius:4px; font-size:14px;';
 
         titleEl.replaceWith(input);
         input.focus();
@@ -217,12 +228,17 @@ document.addEventListener('DOMContentLoaded', () => {
         appendMessage('user', content, new Date().toISOString());
         const aiMsgEl = appendMessage('assistant', '', '');
         const aiBubble = aiMsgEl.querySelector('.message-bubble');
+        aiBubble.innerHTML = '';
 
         try {
             const resp = await fetch(`/api/chat/sessions/${currentSessionId}/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content }),
+                body: JSON.stringify({
+                    content,
+                    thinking: document.getElementById('think-mode')?.checked || false,
+                    reasoning_effort: document.querySelector('.effort-opt.active')?.dataset.v || 'high',
+                }),
             });
 
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -230,6 +246,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const reader = resp.body.getReader();
             const decoder = new TextDecoder();
             let fullText = '';
+            let thinkingText = '';
+            let thinkingEl = null;
+            let contentEl = null;
             let buffer = '';
 
             while (true) {
@@ -249,23 +268,89 @@ document.addEventListener('DOMContentLoaded', () => {
                         else if (line.startsWith('data: ')) eventData = line.slice(6);
                     }
 
+                    if (eventType === 'message_boundary') {
+                        thinkingText = '';
+                        thinkingEl = null;
+                        fullText = '';
+                        contentEl = null;
+                    }
+
+                    if (eventType === 'tool_calls' && eventData) {
+                        try {
+                            const data = JSON.parse(eventData);
+                            const toolEl = document.createElement('div');
+                            toolEl.className = 'tool-calls-info';
+                            const names = data.calls.map(c => `<code>${escapeHtml(c.name)}</code>`).join(', ');
+                            toolEl.innerHTML = `<span class="tool-calls-label">🔧 调用工具:</span> ${names}`;
+                            aiBubble.appendChild(toolEl);
+                            scrollToBottom();
+                        } catch (e) {}
+                    }
+
+                    if (eventType === 'tool_result' && eventData) {
+                        try {
+                            const data = JSON.parse(eventData);
+                            const resultEl = document.createElement('div');
+                            resultEl.className = 'tool-result-info';
+                            resultEl.innerHTML = `<span class="tool-result-label">📋 ${escapeHtml(data.name)} 结果:</span> <span class="tool-result-text">${escapeHtml(data.result || '')}</span>`;
+                            aiBubble.appendChild(resultEl);
+                            scrollToBottom();
+                        } catch (e) {}
+                    }
+
+                    if (eventType === 'reasoning' && eventData) {
+                        try {
+                            const data = JSON.parse(eventData);
+                            thinkingText += data.content || '';
+                            if (!thinkingEl) {
+                                thinkingEl = document.createElement('div');
+                                thinkingEl.className = 'thinking-section';
+                                thinkingEl.innerHTML = `
+                                    <div class="thinking-header">
+                                        <span class="thinking-caret">▼</span> 思考过程
+                                    </div>
+                                    <div class="thinking-body"></div>
+                                `;
+                                thinkingEl.querySelector('.thinking-header').addEventListener('click', function () {
+                                    this.parentElement.classList.toggle('collapsed');
+                                });
+                                aiBubble.appendChild(thinkingEl);
+                            }
+                            thinkingEl.querySelector('.thinking-body').innerHTML = simpleMarkdown(thinkingText);
+                            scrollToBottom();
+                        } catch (e) {}
+                    }
+
                     if (eventType === 'token' && eventData) {
                         try {
                             const data = JSON.parse(eventData);
                             fullText += data.content || '';
-                            aiBubble.innerHTML = simpleMarkdown(fullText);
+                            if (!contentEl) {
+                                contentEl = document.createElement('div');
+                                contentEl.className = 'response-content';
+                                aiBubble.appendChild(contentEl);
+                            }
+                            contentEl.innerHTML = simpleMarkdown(fullText);
                             scrollToBottom();
                         } catch (e) {}
                     }
                 }
             }
 
-            aiBubble.innerHTML = simpleMarkdown(fullText || '...');
+            // 最后一轮收尾
+            if (fullText && !contentEl) {
+                contentEl = document.createElement('div');
+                contentEl.className = 'response-content';
+                aiBubble.appendChild(contentEl);
+                contentEl.innerHTML = simpleMarkdown(fullText);
+            } else if (!fullText && contentEl) {
+                contentEl.innerHTML = simpleMarkdown(fullText || '...');
+            }
             scrollToBottom();
             await loadSessions();
         } catch (err) {
             console.error('发送消息失败:', err);
-            aiBubble.innerHTML = `<span style="color:var(--color-error)">发送失败: ${escapeHtml(err.message)}</span>`;
+            aiBubble.innerHTML = `<span style="color:var(--red)">发送失败: ${escapeHtml(err.message)}</span>`;
         } finally {
             isStreaming = false;
             chatInput.disabled = false;
@@ -276,13 +361,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 辅助函数 ---
 
-    function appendMessage(role, content, timestamp) {
+    function appendMessage(role, content, timestamp, reasoningContent) {
         const el = document.createElement('div');
         el.className = `message ${role}`;
+        let bubbleHtml = '';
+        if (role === 'assistant') {
+            if (reasoningContent) {
+                bubbleHtml += `
+                    <div class="thinking-section">
+                        <div class="thinking-header"><span class="thinking-caret">▼</span> 思考过程</div>
+                        <div class="thinking-body">${simpleMarkdown(reasoningContent)}</div>
+                    </div>`;
+            }
+            bubbleHtml += simpleMarkdown(content || '');
+        } else {
+            bubbleHtml = escapeHtml(content);
+        }
         el.innerHTML = `
-            <div class="message-bubble">${role === 'assistant' ? simpleMarkdown(content) : escapeHtml(content)}</div>
+            <div class="message-bubble">${bubbleHtml}</div>
             <div class="message-time">${timestamp ? formatTime(timestamp) : ''}</div>
         `;
+        // 绑定折叠事件
+        el.querySelector('.thinking-header')?.addEventListener('click', function () {
+            this.parentElement.classList.toggle('collapsed');
+        });
         messageList.appendChild(el);
         scrollToBottom();
         return el;

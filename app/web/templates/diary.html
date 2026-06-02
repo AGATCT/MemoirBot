@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}日记 - PersonalAgent{% endblock %}
+{% block title %}日记 - MemoirBot{% endblock %}
 
 {% block content %}
 <div class="diary-container">
@@ -9,7 +9,7 @@
             <h2>日记</h2>
         </div>
         <!-- 月份选择器 -->
-        <div style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">
+        <div style="padding: 12px 16px; border-bottom: 1px solid var(--border);">
             <div style="display: flex; gap: 8px; align-items: center;">
                 <button id="btn-prev-month" class="btn btn-outline btn-sm" title="上个月">◀</button>
                 <span id="current-month-label" style="flex:1; text-align:center; font-weight:500;"></span>
@@ -20,7 +20,7 @@
         <!-- 日历 -->
         <div id="calendar-grid" style="padding: 8px 16px; overflow-y: auto; flex: 1;"></div>
         <!-- 所有条目列表 -->
-        <div id="entry-list-mini" style="padding: 8px 16px; border-top: 1px solid var(--color-border); overflow-y: auto; max-height: 200px;"></div>
+        <div id="entry-list-mini" style="padding: 8px 16px; border-top: 1px solid var(--border); overflow-y: auto; max-height: 200px;"></div>
     </aside>
 
     <!-- 编辑器 -->
@@ -59,7 +59,7 @@
                         type="text"
                         id="entry-tags"
                         placeholder="标签（逗号分隔）"
-                        style="flex:1; padding:6px 10px; border:1px solid var(--color-border); border-radius:var(--radius); font-size:13px;"
+                        style="flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:var(--r-xs); font-size:13px;"
                     />
                     <span id="save-status" class="text-muted text-sm"></span>
                 </div>

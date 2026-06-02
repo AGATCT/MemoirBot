@@ -122,13 +122,14 @@ class SessionManager:
     # ------------------------------------------------------------------
 
     async def add_message(
-        self, session_id: str, role: str, content: str
+        self, session_id: str, role: str, content: str, reasoning_content: str | None = None
     ) -> ChatMessage:
         msg_id = f"msg_{uuid.uuid4().hex[:8]}"
         msg = ChatMessage(
             msg_id=msg_id,
             role=role,
             content=content,
+            reasoning_content=reasoning_content,
             timestamp=datetime.now().isoformat(),
         )
 

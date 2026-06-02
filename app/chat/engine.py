@@ -53,13 +53,18 @@ class ChatEngine:
     # ------------------------------------------------------------------
 
     async def send_message(
-        self, session_id: str, content: str
+        self, session_id: str, content: str, thinking: bool = False, reasoning_effort: str = "high"
     ) -> AsyncGenerator[dict, None]:
-        """处理用户消息并流式返回 AI 响应。"""
+        """处理用户消息并流式返回 AI 响应。
+
+        采用 coding-agent-reference 模式：每轮一次流式调用，工具调用从流中收集。
+        """
+        import json as json_module
+
         # 1. 保存用户消息
         await self.session_mgr.add_message(session_id, "user", content)
 
-        # 自动命名：首条消息截取前 30 字作为标题
+        # 自动命名
         meta = await self.session_mgr.get_metadata(session_id)
         if meta and meta.message_count == 1 and meta.title == "新对话":
             title = content.replace("\n", " ").strip()[:30]
@@ -71,43 +76,97 @@ class ChatEngine:
         messages = await self.session_mgr.get_messages_for_llm(session_id)
         tools = self._build_chat_tools()
 
-        # 3. tool-use 循环（coding-agent-main 模式：agent 自己决定是否查记忆）
+        # 3. 流式 tool-use 循环
         full_response = ""
+        all_reasoning: str = ""
         max_tool_rounds = 3
         recall_act_id: str | None = None
         recall_items: list[str] = []
         try:
             for _ in range(max_tool_rounds):
-                resp = await self.provider.chat_with_tools(messages, tools)
-                tool_calls = resp.get("tool_calls") or []
+                extra_kwargs = {
+                    "thinking": {"type": "enabled"} if thinking else {"type": "disabled"},
+                }
+                if thinking:
+                    extra_kwargs["reasoning_effort"] = reasoning_effort
 
+                # 一轮一次流式调用
+                tool_calls: list[dict] = []
+                reasoning_acc = ""
+                content_acc = ""
+
+                async for event in self.provider.chat_stream(messages, tools, **extra_kwargs):
+                    if event["type"] == "reasoning":
+                        reasoning_acc += event["content"]
+                        yield event
+                    elif event["type"] == "token":
+                        content_acc += event["content"]
+                        yield event
+                    elif event["type"] == "tool_call":
+                        tool_calls.append(event)
+
+                # 有工具调用 → 执行后继续循环
                 if tool_calls:
-                    # 记录工具调用
                     if recall_act_id is None:
                         from app.agent.activity_log import get_activity_log
                         recall_act_id = get_activity_log().start(
                             "recall", "记忆召回", session_id=session_id,
                         )
-                    messages.append(self._msg_assistant_tool_calls(tool_calls))
+                    # 通知前端本轮调用了哪些工具
+                    yield {
+                        "type": "tool_calls",
+                        "calls": [{"name": tc["name"], "arguments": tc["arguments"]} for tc in tool_calls],
+                    }
+                    assistant_msg: dict = {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": tc["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": tc["name"],
+                                    "arguments": json_module.dumps(tc["arguments"], ensure_ascii=False),
+                                },
+                            }
+                            for tc in tool_calls
+                        ],
+                    }
+                    if reasoning_acc:
+                        assistant_msg["reasoning_content"] = reasoning_acc
+                        all_reasoning += ("\n\n" if all_reasoning else "") + reasoning_acc
+                    messages.append(assistant_msg)
+
                     for tc in tool_calls:
-                        result = await self._execute_chat_tool(tc, session_id)
-                        recall_items.append(f"{tc.name}: {tc.arguments.get('query') or tc.arguments.get('name', '?')}")
+                        result = await self._execute_chat_tool_raw(tc["name"], tc["arguments"], session_id)
+                        recall_items.append(f"{tc['name']}: {tc['arguments'].get('query') or tc['arguments'].get('name', '?')}")
                         messages.append({
                             "role": "tool",
-                            "tool_call_id": tc.id,
+                            "tool_call_id": tc["id"],
                             "content": result,
                         })
+                        yield {"type": "tool_result", "name": tc["name"], "arguments": tc["arguments"], "result": result[:300]}
+                    yield {"type": "message_boundary"}
                     continue
 
-                # 无工具调用 → 最终文本响应
-                content = resp.get("content") or ""
-                full_response = content
-                yield {"type": "token", "content": content}
+                all_reasoning += ("\n\n" if all_reasoning and reasoning_acc else "") + (reasoning_acc or "")
+                full_response = content_acc
                 break
 
             if not full_response:
-                full_response = "抱歉，回复生成失败。"
-                yield {"type": "token", "content": full_response}
+                logger.warning(f"send_message: 轮次耗尽，追加最终调用")
+                yield {"type": "message_boundary"}
+                messages.append({"role": "user", "content": "基于已有信息直接给出最终回答，不要继续调用工具。"})
+                async for event in self.provider.chat_stream(messages, tools, **extra_kwargs):
+                    if event["type"] == "reasoning":
+                        all_reasoning += event["content"]
+                        yield event
+                    elif event["type"] == "token":
+                        full_response += event["content"]
+                        yield event
+                if not full_response:
+                    full_response = "抱歉，回复生成失败。"
+                    yield {"type": "token", "content": full_response}
 
         except Exception as e:
             logger.error(f"LLM 调用失败: {e}")
@@ -116,7 +175,7 @@ class ChatEngine:
 
         # 4. 保存 AI 响应
         assistant_msg = await self.session_mgr.add_message(
-            session_id, "assistant", full_response
+            session_id, "assistant", full_response, reasoning_content=all_reasoning or None
         )
         yield {"type": "done", "msg_id": assistant_msg.msg_id}
 
@@ -341,11 +400,12 @@ class ChatEngine:
         return self.get_unified_tools()
 
     async def _execute_chat_tool(self, tool_call, session_id: str) -> str:
-        """执行聊天工具调用。"""
-        import json
-        name = tool_call.name
-        args = tool_call.arguments
+        """执行聊天工具调用（ToolCall 对象）。"""
+        return await self._execute_chat_tool_raw(tool_call.name, tool_call.arguments, session_id)
 
+    async def _execute_chat_tool_raw(self, name: str, args: dict, session_id: str) -> str:
+        """执行聊天工具调用（原始 name + args）。"""
+        import json
         if name == "search_memories":
             query = args.get("query", "")
             return await self._search_memories(query)
@@ -393,10 +453,13 @@ class ChatEngine:
             return json.dumps({"error": f"记忆文件不存在: {name}.md"}, ensure_ascii=False)
 
     @staticmethod
-    def _msg_assistant_tool_calls(tool_calls) -> dict:
-        """构建含工具调用的 assistant 消息。"""
+    def _msg_assistant_tool_calls(tool_calls, reasoning_content: str | None = None) -> dict:
+        """构建含工具调用的 assistant 消息。
+
+        思考模式下 reasoning_content 必须回传，否则 API 400。
+        """
         import json
-        return {
+        msg: dict = {
             "role": "assistant",
             "content": None,
             "tool_calls": [
@@ -411,3 +474,6 @@ class ChatEngine:
                 for tc in tool_calls
             ],
         }
+        if reasoning_content:
+            msg["reasoning_content"] = reasoning_content
+        return msg

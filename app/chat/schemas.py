@@ -13,6 +13,7 @@ class ChatMessage(BaseModel):
     msg_id: str
     role: Literal["user", "assistant", "system"]
     content: str
+    reasoning_content: str | None = None
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
@@ -44,6 +45,8 @@ class CreateSessionResponse(BaseModel):
 class SendMessageRequest(BaseModel):
     """发送消息请求。"""
     content: str
+    thinking: bool = False
+    reasoning_effort: str = "high"  # high | max
 
 
 class RenameSessionRequest(BaseModel):

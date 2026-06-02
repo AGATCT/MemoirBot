@@ -142,7 +142,7 @@ async def send_message(session_id: str, req: SendMessageRequest):
 
     async def event_stream():
         try:
-            async for event in engine.send_message(session_id, req.content):
+            async for event in engine.send_message(session_id, req.content, thinking=req.thinking, reasoning_effort=req.reasoning_effort):
                 event_type = event.get("type", "token")
                 data = {k: v for k, v in event.items() if k != "type"}
                 yield f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"

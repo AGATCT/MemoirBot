@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     # --- LLM 配置 ---
     deepseek_api_key: str = ""
-    llm_model: str = "deepseek-chat"
+    llm_model: str = "deepseek-v4-flash"
     llm_max_tokens: int = 4096
     llm_temperature: float = 0.7
     deepseek_base_url: str = "https://api.deepseek.com/v1"

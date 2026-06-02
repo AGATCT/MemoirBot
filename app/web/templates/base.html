@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}PersonalAgent{% endblock %}</title>
+    <title>{% block title %}MemoirBot{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/app.css">
     {% block head %}{% endblock %}
 </head>
 <body>
     <div class="app-layout">
         <nav class="sidebar">
-            <div class="sidebar-brand"><h1>PersonalAgent</h1></div>
+            <div class="sidebar-brand"><h1>MemoirBot</h1></div>
             <ul class="sidebar-nav">
                 <li><a href="/chat" class="nav-item {% if request.url.path == '/chat' or request.url.path == '/' %}active{% endif %}">聊天</a></li>
                 <li><a href="/diary" class="nav-item {% if request.url.path == '/diary' %}active{% endif %}">日记</a></li>

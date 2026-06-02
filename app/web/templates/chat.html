@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}聊天 - PersonalAgent{% endblock %}
+{% block title %}聊天 - MemoirBot{% endblock %}
 
 {% block content %}
 <div class="chat-container">
@@ -18,7 +18,7 @@
     <div class="chat-main" id="chat-main">
         <div id="no-session-hint" class="chat-placeholder">
             <div class="placeholder-icon">·</div>
-            <h2>欢迎使用 PersonalAgent</h2>
+            <h2>欢迎使用 MemoirBot</h2>
             <p>选择一个对话或创建新对话开始聊天</p>
             <p class="text-muted">AI 助手会在对话中了解你，并将重要信息保存为记忆</p>
         </div>
@@ -40,7 +40,24 @@
                     placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"
                     rows="2"
                 ></textarea>
-                <button id="btn-send" class="btn btn-primary" disabled>发送</button>
+                <div class="chat-input-toolbar">
+                    <div class="think-controls">
+                        <label class="think-toggle" title="开启后 AI 会先思考再回复">
+                            <input type="checkbox" id="think-mode">
+                            <span class="think-toggle-track">
+                                <span class="think-toggle-text">深度思考</span>
+                            </span>
+                        </label>
+                        <span class="effort-switch" title="思考强度">
+                            <span class="effort-opt" data-v="high">high</span>
+                            <span class="effort-sep">/</span>
+                            <span class="effort-opt active" data-v="max">max</span>
+                        </span>
+                    </div>
+                    <button id="btn-send" class="btn-send-icon" disabled title="发送 (Enter)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    </button>
+                </div>
             </div>
         </div>
     </div>

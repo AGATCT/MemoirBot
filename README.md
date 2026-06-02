@@ -1,6 +1,6 @@
 # MemoirBot
 
-An AI personal assistant with an automatic memory system. Supports natural language conversation and diary features, extracting user information from interactions and persisting it across sessions.
+An AI personal assistant with an automatic long-term memory system. Supports natural language conversation and diary features, extracting user information from interactions and persisting it across sessions.
 
 Architecture inspired by Claude Code's memory system design.
 
@@ -28,13 +28,15 @@ Visit `http://localhost:8000`
 
 ## Configuration
 
-| Environment Variable     | Default           | Description              |
-| ------------------------ | ----------------- | ------------------------ |
-| `DEEPSEEK_API_KEY`     | —                | DeepSeek API Key         |
-| `LLM_MODEL`            | `deepseek-chat` | Model name               |
-| `EXTRACTION_INTERVAL`  | `3`             | Memory extraction interval (conversation rounds) |
-| `DREAM_INTERVAL_HOURS` | `24`            | Memory consolidation interval |
-| `DREAM_MIN_SESSIONS`   | `5`             | Min sessions for consolidation |
+| Environment Variable     | Default               | Description                                      |
+| ------------------------ | --------------------- | ------------------------------------------------ |
+| `DEEPSEEK_API_KEY`     | —                    | DeepSeek API Key                                 |
+| `LLM_MODEL`            | `deepseek-v4-flash` | Model name                                       |
+| `EXTRACTION_INTERVAL`  | `3`                 | Memory extraction interval (conversation rounds) |
+| `DREAM_INTERVAL_HOURS` | `24`                | Memory consolidation interval                    |
+| `DREAM_MIN_SESSIONS`   | `5`                 | Min sessions for consolidation                   |
+
+
 
 ---
 
@@ -68,10 +70,10 @@ uvicorn app.main:app --reload
 
 ## 配置
 
-| 环境变量                 | 默认值            | 说明                     |
-| ------------------------ | ----------------- | ------------------------ |
-| `DEEPSEEK_API_KEY`     | —                | DeepSeek API Key         |
-| `LLM_MODEL`            | `deepseek-chat` | 模型名称                 |
-| `EXTRACTION_INTERVAL`  | `3`             | 记忆提取间隔（对话轮数） |
-| `DREAM_INTERVAL_HOURS` | `24`            | 记忆整理间隔             |
-| `DREAM_MIN_SESSIONS`   | `5`             | 整理所需最少会话数       |
+| 环境变量                 | 默认值                | 说明                     |
+| ------------------------ | --------------------- | ------------------------ |
+| `DEEPSEEK_API_KEY`     | —                    | DeepSeek API Key         |
+| `LLM_MODEL`            | `deepseek-v4-flash` | 模型名称                 |
+| `EXTRACTION_INTERVAL`  | `3`                 | 记忆提取间隔（对话轮数） |
+| `DREAM_INTERVAL_HOURS` | `24`                | 记忆整理间隔             |
+| `DREAM_MIN_SESSIONS`   | `5`                 | 整理所需最少会话数       |

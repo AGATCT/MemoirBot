@@ -20,7 +20,7 @@ class DeepSeekProvider(LLMProvider):
     """DeepSeek API 提供商。
 
     通过 OpenAI 兼容的 API 端点调用 DeepSeek 模型。
-    支持 deepseek-chat 等模型。
+    支持 deepseek-v4-flash 等模型。
     """
 
     def __init__(self, config: LLMConfig):
@@ -58,13 +58,22 @@ class DeepSeekProvider(LLMProvider):
         return data["choices"][0]["message"]["content"]
 
     # ------------------------------------------------------------------
-    # chat_stream — 流式
+    # chat_stream — 流式（含工具调用）
     # ------------------------------------------------------------------
 
     async def chat_stream(
-        self, messages: list[dict], **kwargs
-    ) -> AsyncGenerator[str, None]:
+        self, messages: list[dict], tools: list[dict] | None = None, **kwargs
+    ) -> AsyncGenerator[dict, None]:
+        """流式聊天，逐块返回 reasoning / token / tool_call。
+
+        工具调用增量在流中累积，流结束后 yield ToolCall 对象。
+        """
         payload = self._build_payload(messages, stream=True, **kwargs)
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
+
+        tool_call_acc: dict[int, dict] = {}  # index → {id, name, arguments}
 
         async with self.client.stream("POST", "/chat/completions", json=payload) as resp:
             resp.raise_for_status()
@@ -76,11 +85,47 @@ class DeepSeekProvider(LLMProvider):
                     try:
                         chunk = json.loads(data_str)
                         delta = chunk["choices"][0].get("delta", {})
+
+                        # 工具调用增量
+                        for tc_delta in delta.get("tool_calls", []):
+                            idx = tc_delta.get("index", 0)
+                            if idx not in tool_call_acc:
+                                tool_call_acc[idx] = {"id": "", "name": "", "arguments": ""}
+                            acc = tool_call_acc[idx]
+                            if tc_delta.get("id"):
+                                acc["id"] = tc_delta["id"]
+                            fn = tc_delta.get("function", {})
+                            if fn.get("name"):
+                                acc["name"] = fn["name"]
+                            if fn.get("arguments"):
+                                acc["arguments"] += fn["arguments"]
+
+                        # 思考内容
+                        reasoning = delta.get("reasoning_content", "")
+                        if reasoning:
+                            yield {"type": "reasoning", "content": reasoning}
+
+                        # 正文
                         content = delta.get("content", "")
                         if content:
-                            yield content
+                            yield {"type": "token", "content": content}
                     except (json.JSONDecodeError, KeyError, IndexError):
                         continue
+
+        # 流结束后，yield 累积完成的工具调用
+        for idx in sorted(tool_call_acc.keys()):
+            tc = tool_call_acc[idx]
+            if tc["id"] and tc["name"]:
+                try:
+                    args = json.loads(tc["arguments"])
+                except (json.JSONDecodeError, TypeError):
+                    args = {}
+                yield {
+                    "type": "tool_call",
+                    "id": tc["id"],
+                    "name": tc["name"],
+                    "arguments": args,
+                }
 
     # ------------------------------------------------------------------
     # chat_with_tools — 工具调用
@@ -106,6 +151,7 @@ class DeepSeekProvider(LLMProvider):
 
         result: dict = {
             "content": message.get("content"),
+            "reasoning_content": message.get("reasoning_content"),
             "tool_calls": None,
             "finish_reason": finish_reason,
         }
